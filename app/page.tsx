@@ -1,446 +1,516 @@
 'use client';
-import React, { useState, useEffect, useCallback } from 'react';
-import dynamic from 'next/dynamic';
-import medicine from './medicine/page';
+import React, { useState, useEffect, useCallback, useMemo, useRef, forwardRef } from 'react';
 
-// Dynamic import for client-side libraries (simulated chart component)
-const DynamicChart = dynamic(() => Promise.resolve(({ isDarkMode }) => (
-    <div className={`w-full h-72 rounded-xl p-4 flex items-center justify-center font-bold text-xl ${isDarkMode ? 'bg-slate-700 text-blue-300' : 'bg-white text-gray-700 border border-gray-200'}`}>
-        Sales Trend Chart (Last 30 Days)
-        <span className="text-sm font-light mt-2 absolute bottom-2">Data visualization placeholder</span>
-    </div>
-)), { ssr: false });
-
-// --- KIBRAN COLOR CONSTANTS ---
+// --- NEW KIBRAN BLUE COLOR CONSTANTS ---
 const KIBRAN_COLOR = '#003A70'; // Deeper Blue (Primary)
-const KIBRAN_COLOR_LIGHT = '#1A6AA5'; 
+const KIBRAN_COLOR_HOVER = '#002C55'; // Darker for hover effect
+const KIBRAN_COLOR_LIGHT = '#1A6AA5'; // Slightly darker light blue for contrast
 
 // Utility function to merge Tailwind classes
-const clsx = (...classes: (string | boolean | null | undefined)[]) => classes.filter(Boolean).join(' ');
+const clsx = (...classes) => classes.filter(Boolean).join(' ');
 
 // The backgrounds images and the overlay colors
-// NOTE: Ensure these files exist in your project's public directory
-const LIGHT_MODE_BACKGROUND_IMAGE = '/background1.jpg'; 
-const DARK_MODE_BACKGROUND_IMAGE = '/background2.jpg';
+const DARK_MODE_BACKGROUND_IMAGE = '/background2.jpg'; 
+const LIGHT_MODE_BACKGROUND_IMAGE = '/background1.jpg';
 const LIGHT_OVERLAY = 'rgba(255, 255, 255, 0.8)'; 
 const DARK_OVERLAY = 'rgba(0, 0, 0, 0.4)';
 
+// Assigning password criteria check function
+const checkPasswordCriteria = (password) => ({
+    minLength: password.length >= 8,
+    hasUppercase: /[A-Z]/.test(password),
+    hasLowercase: /[a-z]/.test(password),
+    hasNumber: /[0-9]/.test(password),
+    hasSpecialChar: /[^A-Za-z0-9]/.test(password),
+});
 
-// Icon definitions (A comprehensive set for all dashboard sections)
+// Icon defination (reused icons)
 const Icons = {
-    // Basic Icons
-    SunIcon: (props: React.SVGProps<SVGSVGElement>) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2m-4-8H4m16 0h-2M6.34 6.34l1.41 1.41m12.71 12.71-1.41-1.41M6.34 17.66l1.41-1.41m12.71-12.71-1.41 1.41"/></svg>),
-    MoonIcon: (props: React.SVGProps<SVGSVGElement>) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>),
-    LogOutIcon: (props: React.SVGProps<SVGSVGElement>) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>),
-    LayoutDashboardIcon: (props: React.SVGProps<SVGSVGElement>) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>),
-    
-    // Custom Pharmacy Icon (Mortar and Pestle) - The original item that was likely missing
-    MortarPestleIcon: (props: React.SVGProps<SVGSVGElement>) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 10h-2v3a5 5 0 0 0 5 5h2v-3a5 5 0 0 0-5-5Z"/><path d="M12 18h2a5 5 0 0 0 5-5v-3h-2a5 5 0 0 0-5 5Z"/><path d="M17 12h-2v-3a5 5 0 0 0-5-5H8a5 5 0 0 0-5 5v3h2a5 5 0 0 0 5 5h2v-3a5 5 0 0 0 5-5Z"/><path d="M15 12h2a5 5 0 0 0 5-5v-3h-2a5 5 0 0 0-5 5Z"/></svg>),
-    
-    // Menu Icon (Hamburger)
-    MenuIcon: (props: React.SVGProps<SVGSVGElement>) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>),
-    
-    // Core Functions
-    PillIcon: (props: React.SVGProps<SVGSVGElement>) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22h6c3.31 0 6-2.69 6-6s-2.69-6-6-6h-6m-6 0H6c-3.31 0-6 2.69-6 6s2.69 6 6 6h6m0-12V6c0-1.66-1.34-3-3-3s-3 1.34-3 3v4M12 12V6c0-1.66 1.34-3 3-3s3 1.34 3 3v4"/></svg>),
-    TruckIcon: (props: React.SVGProps<SVGSVGElement>) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 17H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v6"/><path d="M15 17h6"/><path d="M18 17v-4"/><circle cx="7" cy="19" r="2"/><circle cx="17" cy="19" r="2"/><path d="M14 17h-2v-3h2V5h4v12h-4"/></svg>),
-    ShoppingCartIcon: (props: React.SVGProps<SVGSVGElement>) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 12.08a2 2 0 0 0 2 1.92h9.72a2 2 0 0 0 2-1.92L23 6H6"/></svg>),
-    BarChartIcon: (props: React.SVGProps<SVGSVGElement>) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>),
-    PackageIcon: (props: React.SVGProps<SVGSVGElement>) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><line x1="12" y1="22.76" x2="12" y2="12.5"/></svg>),
-    UsersIcon: (props: React.SVGProps<SVGSVGElement>) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>),
-    UserIcon: (props: React.SVGProps<SVGSVGElement>) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>),
+    UserIcon: (props) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>),
+    MailIcon: (props) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>),
+    // --- UPDATED LockIcon with strokeWidth=1.5 for a thinner look ---
+    LockIcon: (props) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>),
+    SunIcon: (props) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2m-4-8H4m16 0h-2M6.34 6.34l1.41 1.41m12.71 12.71-1.41-1.41M6.34 17.66l1.41-1.41m12.71-12.71-1.41 1.41"/></svg>),
+    MoonIcon: (props) => (<svg {...props} xmlns="http://w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>),
+    CheckIcon: (props) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>),
+    AlertIcon: (props) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>),
+    EyeIcon: (props) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>),
+    // --- UPDATED KeyIcon with strokeWidth=1.5 and simplified path ---
+    KeyIcon: (props) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="m10 16-1-1 4-4 1 1 4 4-4 4zM16 8l-2 2M10 12l-2 2M14 6l-2 2M6 18l-2 2"/></svg>),
 
-    // NEW ICONS for Header
-    BellIcon: (props: React.SVGProps<SVGSVGElement>) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>),
-    MessageSquareIcon: (props: React.SVGProps<SVGSVGElement>) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>),
-    SettingsIcon: (props: React.SVGProps<SVGSVGElement>) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1 1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 .33 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>),
-    
-    // --- NEW ICONS FOR SIDEBAR ---
-    FileTextIcon: (props: React.SVGProps<SVGSVGElement>) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>), // Invoice
-    CreditCardIcon: (props: React.SVGProps<SVGSVGElement>) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>), // Bank
-    DollarSignIcon: (props: React.SVGProps<SVGSVGElement>) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>), // Account/Finance
-    Package2Icon: (props: React.SVGProps<SVGSVGElement>) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7M3 7h18"/></svg>), // Return
-    BriefcaseIcon: (props: React.SVGProps<SVGSVGElement>) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>), // Manufacturer (as Business)
-    ClipboardIcon: (props: React.SVGProps<SVGSVGElement>) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>), // Task
-    UserCheckIcon: (props: React.SVGProps<SVGSVGElement>) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M17 11l-3 3l1.5 1.5"/></svg>), // Customer
+    EyeOffIcon: (props) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-10-7-10-7a1.86 1.86 0 0 1-.3-1"/><path d="M22 12s-3 7-10 7a9.78 9.78 0 0 1-2.92-.52"/><line x1="2" y1="2" x2="22" y2="22"/></svg>),
+    PillBottleIcon: (props) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 20h4M12 20V4M10 4h4a3 3 0 0 1 3 3v13a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V7a3 3 0 0 1 3-3z"/><circle cx="10" cy="9" r="0.5" fill="currentColor" stroke="none"/><circle cx="14" cy="12" r="0.5" fill="currentColor" stroke="none"/><circle cx="12" cy="15" r="0.5" fill="currentColor" stroke="none"/><rect x="9" y="3" width="6" height="2" rx="0.5" ry="0.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>),
+    DeliveryTruckIcon: (props) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 3h15v14H1z"/><path d="M15 17h5l4-5V3H15z"/><circle cx="5.5" cy="19.5" r="2.5"/><circle cx="18.5" cy="19.5" r="2.5"/><polyline points="7 7 11 7 11 11 7 11"/></svg>),
 };
 
-// --- Dashboard Menu Structure (UPDATED) ---
-// Note: 'component' name should match the switch case in renderContent
-const MENU_ITEMS = [
-    { name: 'Dashboard', icon: Icons.LayoutDashboardIcon, component: 'DashboardContent' }, // Changed to LayoutDashboardIcon
-    { name: 'Invoice', icon: Icons.FileTextIcon, component: 'InvoiceContent' }, 
-    { name: 'Customer', icon: Icons.UserCheckIcon, component: 'CustomerContent' }, 
-    { name: 'Manufacturer', icon: Icons.BriefcaseIcon, component: 'ManufacturerContent' }, 
-    { name: 'Medicine', icon: Icons.PillIcon, component: 'MedicineContent' },
-    { name: 'Purchase', icon: Icons.ShoppingCartIcon, component: 'PurchaseContent' },
-    { name: 'Stock', icon: Icons.PackageIcon, component: 'StockContent' },
-    { name: 'Return', icon: Icons.Package2Icon, component: 'ReturnContent' }, 
-    { name: 'Report', icon: Icons.BarChartIcon, component: 'ReportingContent' },
-    { name: 'Account', icon: Icons.DollarSignIcon, component: 'AccountContent' }, 
-    { name: 'Bank', icon: Icons.CreditCardIcon, component: 'BankContent' }, 
-    { name: 'Task', icon: Icons.ClipboardIcon, component: 'TaskContent' }, 
-];
+// custom Alert Components
+const CustomAlert = ({ message, type, onClose }) => {
+    if (!message) return null;
 
-// ----------------------------------------------------------------------
-// --- MOCKUP COMPONENTS FOR DYNAMIC CONTENT VIEWS (UPDATED) ---
-// ----------------------------------------------------------------------
+    const baseClasses = "fixed bottom-4 left-1/2 transform -translate-x-1/2 p-4 rounded-xl shadow-2xl z-[100] transition-all duration-500 max-w-sm w-11/12 flex items-center space-x-3";
+    let typeClasses = "";
+    let IconComponent = Icons.AlertIcon;
 
-// Reused KPI Card (no changes)
-const KPICard = ({ title, value, isDarkMode }: { title: string, value: string, isDarkMode: boolean }) => {
-    const baseClasses = clsx(
-        "p-6 rounded-xl shadow-lg flex flex-col justify-between h-full transition-all duration-300",
-        isDarkMode ? 'bg-slate-800/90 text-white' : 'bg-white/90 text-slate-800 border border-gray-100'
-    );
+    if (type === 'success') {
+        typeClasses = "bg-green-600 text-white border border-green-700";
+        IconComponent = Icons.CheckIcon;
+    } else if (type === 'error') {
+        typeClasses = "bg-red-600 text-white border border-red-700";
+        IconComponent = Icons.AlertIcon;
+    }
+
     return (
-        <div className={baseClasses}>
-            <p className={clsx("text-sm font-semibold", isDarkMode ? 'text-blue-300' : 'text-slate-600')}>{title}</p>
-            <h2 className="text-3xl font-extrabold" style={{ color: KIBRAN_COLOR }}>{value}</h2>
+        <div className={clsx(baseClasses, typeClasses)} role="alert" aria-live="assertive">
+            <IconComponent className="w-6 h-6 flex-shrink-0"/>
+            <span className="font-medium text-sm flex-grow">{message}</span>
+            <button 
+                onClick={onClose} 
+                className="ml-2 p-1 rounded-full hover:bg-white/20 transition-colors"
+                aria-label="Close notification"
+            >
+                <svg className="w-4 h-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+            </button>
         </div>
     );
 };
 
-// Dashboard Content (no changes)
-const DashboardContent = ({ isDarkMode }: { isDarkMode: boolean }) => {
-    const KPI_DATA = [
-        { title: "Total Inventory Value", value: "$4.2 M" },
-        { title: "Pending Orders", value: "87" },
-        { title: "Total Sales (MoM)", value: "$75,200" },
-        { title: "Low Stock Items", value: "34" },
-    ];
-    return (
-        <div>
-            {/* Title is centered as requested */}
-            <h2 className="text-3xl font-bold mb-6 text-center" style={{ color: KIBRAN_COLOR }}>Overview</h2>
-            
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10">
-                {KPI_DATA.map(kpi => <KPICard key={kpi.title} {...kpi} isDarkMode={isDarkMode} />)}
-            </div>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                 <div className={clsx("p-6 rounded-xl shadow-lg h-96", isDarkMode ? 'bg-slate-800/90' : 'bg-white/90')}>
-                    <h3 className="text-xl font-bold mb-4">Sales Trend</h3>
-                    <DynamicChart isDarkMode={isDarkMode} />
-                </div>
-                <div className={clsx("p-6 rounded-xl shadow-lg h-96", isDarkMode ? 'bg-slate-800/90' : 'bg-white/90')}>
-                    <h3 className="text-xl font-bold mb-4">Critical Alerts</h3>
-                    <p className={isDarkMode ? 'text-slate-400' : 'text-slate-600'}>3 urgent stock alerts. 5 orders in limbo.</p>
-                </div>
-            </div>
-        </div>
+// --- Form Input Component (Reused for Password Fields) ---
+const FormInput = React.memo(forwardRef(({ 
+    name, type = 'text', label, icon: Icon, isRequired, error, isDarkMode, 
+    value, onChange, onKeyDown, onBlur 
+}, ref) => {
+    const isPasswordField = type === 'password' || name.toLowerCase().includes('password');
+    const [showPassword, setShowPassword] = useState(false);
+
+    const inputType = isPasswordField ? (showPassword ? 'text' : 'password') : type;
+
+    const labelClasses = clsx(
+        "block text-base font-medium transition-colors duration-500 mb-1",
+        isDarkMode ? 'text-blue-300' : 'text-slate-900' 
     );
-};
 
-// Placeholder for all other navigation pages (no changes)
-const ContentPlaceholder = ({ title, isDarkMode, children }: { title: string, isDarkMode: boolean, children?: React.ReactNode }) => (
-    <div className={clsx("p-8 rounded-xl shadow-2xl min-h-[85vh] transition-colors duration-500", 
-        // Use a slightly opaque background so the main fixed background shows through (Frosted effect)
-        isDarkMode ? 'bg-slate-800/80 text-white backdrop-blur-sm' : 'bg-white/90 text-slate-800 backdrop-blur-sm')}>
-        <h2 className="text-3xl font-extrabold mb-8 pb-4 border-b" style={{ color: KIBRAN_COLOR }}>{title}</h2>
-        <p className={clsx("text-lg", isDarkMode ? 'text-blue-200' : 'text-slate-700')}>
-            {children || `This is the dedicated management interface for ${title}. Here you would find tables, forms, and specific KPIs related to this area.`}
-        </p>
-        <div className="mt-10 p-4 border-t border-dashed" style={{ borderColor: isDarkMode ? '#1A6AA5' : '#003A70' }}>
-            <p className="font-semibold" style={{ color: isDarkMode ? KIBRAN_COLOR_LIGHT : KIBRAN_COLOR }}>
-                Example Functionality:
-            </p>
-            <ul className="list-disc ml-6 mt-2 text-sm">
-                <li>Search & Filter (e.g., by name, SKU, price)</li>
-                <li>Add New / Edit Records (e.g., New Supplier, Edit Price)</li>
-                <li>Bulk Import/Export</li>
-            </ul>
-        </div>
-    </div>
-);
+    const iconClasses = clsx(
+        "absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 transition-colors duration-500",
+        error ? 'text-red-500' : (isDarkMode ? 'text-blue-400' : 'text-slate-700')
+    );
 
-// ----------------------------------------------------------------------
-// --- SIDEBAR COMPONENT (No changes) ---
-// ----------------------------------------------------------------------
-
-const DashboardSidebar = ({ activeItem, setActiveItem, isDarkMode, userName, userRole, isVisible }: { activeItem: string, setActiveItem: (item: string) => void, isDarkMode: boolean, userName: string, userRole: string, isVisible: boolean }) => {
-    
-    // Sidebar class with translucent background and backdrop blur
-    const sidebarClasses = clsx(
-        "flex flex-col w-64 min-h-screen p-4 transition-all duration-500 flex-shrink-0 z-40 fixed left-0 top-0",
-        // HIDE/SHOW LOGIC: Use 'translate-x-0' for visible, and '-translate-x-full' for hidden
-        isVisible ? 'translate-x-0' : '-translate-x-full',
+    const inputClasses = clsx(
+        "w-full pl-12 py-3.5 border rounded-xl shadow-lg outline-none transition-all duration-300 font-semibold text-sm appearance-none",
+        isPasswordField ? 'pr-12' : 'pr-4',
+        error ? 'border-red-500 ring-2 ring-red-500/50' : 'hover:border-[#1A6AA5]', // Use KIBRAN_COLOR_LIGHT for light hover
         isDarkMode 
-            ? 'bg-slate-900/80 text-white shadow-2xl backdrop-blur-md' 
-            : 'bg-white/80 text-slate-800 shadow-xl border-r border-gray-200 backdrop-blur-md'
-    );
-
-    const linkClasses = (isActive: boolean) => clsx(
-        "flex items-center p-3 rounded-xl transition-all duration-200 font-medium text-base mb-2 hover:shadow-md",
-        isActive
-            ? `text-white shadow-lg`
-            : (isDarkMode ? 'text-blue-300 hover:bg-slate-700/70' : 'text-slate-700 hover:bg-gray-100'),
-        // Dynamic background for active link
-        isActive ? 'bg-gradient-to-r from-[#003A70] to-blue-800' : 'bg-transparent'
+            ? 'bg-slate-700 text-slate-100 border-slate-600 focus:border-[#1A6AA5] focus:ring-2 focus:ring-[#1A6AA5]/50' // Use KIBRAN_COLOR_LIGHT for focus
+            : 'bg-white/70 text-black border-gray-300 focus:border-[#003A70] focus:ring-2 focus:ring-[#003A70]/50 placeholder:text-slate-700/70' // Use KIBRAN_COLOR for focus
     );
 
     return (
-        <nav className={sidebarClasses}>
-            {/* Logo/Branding (Restored original style, assuming the original image fits) */}
-            <div className="flex items-center mb-10 py-4 px-2">
-                <img 
-                    src="./kibran-logo.jpg" 
-                    alt="Kibran Logo" 
-                    className="w-10 h-10 rounded-full mr-3 shadow-md"
-                    onError={(e) => { (e.target as HTMLImageElement).onerror = null; (e.target as HTMLImageElement).src = `https://placehold.co/40x40/${KIBRAN_COLOR.substring(1)}/ffffff?text=K`; }}
+        <div className="mb-6">
+            <label htmlFor={name} className={labelClasses}>
+                {label} {isRequired && <span className="text-red-500">*</span>}
+            </label>
+            <div className="relative">
+                <Icon className={iconClasses} style={!isDarkMode ? { color: KIBRAN_COLOR } : {}} />
+
+                
+                <input
+                    id={name}
+                    name={name}
+                    type={inputType}
+                    value={value}
+                    onChange={onChange}
+                    onKeyDown={onKeyDown}
+                    onBlur={onBlur} 
+                    ref={ref}
+                    required={isRequired}
+                    className={inputClasses}
+                    placeholder={`Enter ${label.toLowerCase()}`}
+                    aria-invalid={!!error}
+                    aria-describedby={error ? `${name}-error` : undefined}
                 />
-                <h2 className="text-xl font-extrabold uppercase tracking-wider" style={{ color: KIBRAN_COLOR }}>Kibran</h2>
+
+                {isPasswordField && (
+                    <button 
+                        type="button" 
+                        onClick={() => setShowPassword(prev => !prev)}
+                        className={clsx(
+                            "absolute right-4 top-1/2 transform -translate-y-1/2 p-1 rounded-full transition-colors duration-200",
+                            isDarkMode ? 'text-slate-400 hover:text-blue-400' : 'text-slate-600 hover:text-[#003A70]' // Use KIBRAN_COLOR for hover
+                        )}
+                        aria-label={showPassword ? "Hide password" : "Show password"}
+                    >
+                        {showPassword ? <Icons.EyeOffIcon className="w-5 h-5" /> : <Icons.EyeIcon className="w-5 h-5" />}
+                    </button>
+                )}
             </div>
-            
-            {/* Menu Links */}
-            <div className="flex-grow">
-                {MENU_ITEMS.map(item => {
-                    const Icon = item.icon;
-                    const isActive = activeItem === item.component;
-                    return (
-                        <button 
-                            key={item.name}
-                            onClick={() => setActiveItem(item.component)}
-                            className={clsx("w-full text-left", linkClasses(isActive))}
-                            style={isActive ? { backgroundImage: `linear-gradient(to right, ${KIBRAN_COLOR}, ${KIBRAN_COLOR_LIGHT})` } : {}}
-                        >
-                            <Icon className="w-5 h-5 mr-3 flex-shrink-0" />
-                            {item.name}
-                        </button>
-                    );
-                })}
+            {error && (
+                <p id={`${name}-error`} className="mt-1 text-xs text-red-500 font-medium flex items-center ml-1" role="alert">
+                    <Icons.AlertIcon className="w-4 h-4 mr-1"/>
+                    {error}
+                </p>
+            )}
+        </div>
+    );
+}));
+
+
+// --- Pharmacy Hero/Branding Component (Reused for Deep Blue Theme) ---
+const PharmacyHero = ({ isDarkMode }) => {
+    const logoShadowClass = isDarkMode ? 'hover:shadow-blue-500/80' : 'hover:shadow-blue-800/60';
+
+    return (
+        <div className={clsx(`hidden lg:flex flex-col justify-center items-center pb-12 px-12 lg:w-6/12 min-h-screen relative 
+            transition-all duration-700 ease-in-out overflow-hidden bg-transparent`,
+            isDarkMode ? 'text-white' : 'text-slate-900')} 
+        >
+            <div className={clsx("absolute inset-0 z-0 transition-opacity duration-700", isDarkMode ? 'opacity-30' : 'opacity-10')}>
+                {/* Changed background accents to blue */}
+                <div className={clsx("absolute w-96 h-96 rounded-full blur-3xl transition-all duration-1000 animate-pulse-slow top-1/4 left-1/4 -translate-x-1/2 -translate-y-1/2", isDarkMode ? 'bg-blue-400/20' : 'bg-blue-300/50')}></div>
+                <div className={clsx("absolute w-64 h-32 rounded-full transform rotate-45 blur-3xl transition-all duration-1000 animate-pulse-fast bottom-1/4 right-1/4 translate-x-1/2 -translate-y-1/2", isDarkMode ? 'bg-blue-400/20' : 'bg-blue-200/50')}></div>
             </div>
 
-            {/* Profile & Logout Section */}
-            <div className={clsx("p-4 mt-6 rounded-xl border-t", isDarkMode ? 'border-slate-700' : 'border-gray-200')}>
-                <div className="flex items-center mb-4">
-                    <Icons.UserIcon className="w-8 h-8 mr-3 p-1 rounded-full text-white bg-blue-600" style={{ backgroundColor: KIBRAN_COLOR }}/>
-                    <div>
-                        <p className="font-bold text-sm">{userName}</p>
-                        <p className={clsx("text-xs", isDarkMode ? 'text-slate-400' : 'text-slate-500')}>{userRole}</p>
-                    </div>
+            <div className="relative z-10 max-w-xl text-center">
+                <div className={clsx(`mx-auto mb-16 w-80 h-80 rounded-full overflow-hidden border-4 
+                            shadow-2xl transition-all duration-500 group cursor-pointer`, logoShadowClass,
+                            isDarkMode ? 'border-blue-400/50' : 'border-white/50')}>
+                    
+                    <img 
+                        src="./kibran-logo.jpg"
+                        alt="Kibran Pharmaceutical Wholesale Logo" 
+                        className="w-full h-full object-cover animate-fadeInDown transition-all duration-500 ease-out group-hover:scale-105"
+                        // Placeholder uses KIBRAN_COLOR for consistency
+                        onError={(e) => { e.target.onerror = null; e.target.src = `https://placehold.co/320x320/${KIBRAN_COLOR.substring(1)}/d1d5db?text=KIBRAN+LOGO`; }}
+                    />
                 </div>
-                {/* LOGOUT BUTTON */}
-                <button 
-                    // Replace console.log with your actual logout logic (e.g., router.push('/login'))
-                    onClick={() => console.log('Logging out... Redirecting to login page.')} 
-                    className={clsx("w-full flex items-center justify-center py-2 rounded-lg font-semibold text-sm transition-colors duration-200",
-                        isDarkMode ? 'bg-red-800/50 hover:bg-red-700 text-red-300' : 'bg-red-100 hover:bg-red-200 text-red-600'
-                    )}
-                >
-                    <Icons.LogOutIcon className="w-4 h-4 mr-2" />
-                    Logout
-                </button>
+                
+                <p className="text-2xl leading-relaxed font-light opacity-90 mb-12  inline-block">
+                    Secure your account with a strong, new password. Regular password changes help maintain system integrity and data safety.
+                </p>
+                
+                 <div className="flex justify-center items-center space-x-12 animate-fadeInUp delay-500">
+                    <Icons.PillBottleIcon 
+                        // BUG FIX: Wrapped class names in a single string for clsx
+                        className={clsx('w-16 h-16 stroke-1.5 transform hover:scale-110 transition-transform duration-500', 
+                            isDarkMode ? 'text-blue-300' : 'text-blue-600')} 
+                        style={{ color: isDarkMode ? KIBRAN_COLOR_LIGHT : KIBRAN_COLOR, filter: 'drop-shadow(0 4px 6px rgba(0, 0, 0, 0.2))' }}
+                    />
+                    
+                    <Icons.DeliveryTruckIcon 
+                        // BUG FIX: Wrapped class names in a single string for clsx
+                        className={clsx('w-16 h-16 stroke-1.5 animate-pulse-fast transition-transform duration-500', 
+                            isDarkMode ? 'text-blue-300' : 'text-blue-600')} 
+                        style={{ color: isDarkMode ? KIBRAN_COLOR_LIGHT : KIBRAN_COLOR, filter: 'drop-shadow(0 4px 6px rgba(0, 0, 0, 0.2))' }}
+                    />
+                </div>
             </div>
-        </nav>
+        </div>
     );
 };
 
-// ----------------------------------------------------------------------
-// --- NEW: HEADER ICONS COMPONENT (No changes) ---
-// ----------------------------------------------------------------------
 
-interface HeaderIconsProps {
-    isDarkMode: boolean;
-    toggleTheme: () => void;
-}
+// --- Form Section (Right Column) (Updated for Email) ---
+const FormSection = ({
+    isDarkMode, formData, formErrors, handleChange, handleBlur, handleKeyDown,
+    handleSubmit, emailRef, currentPasswordRef, newPasswordRef, confirmNewPasswordRef, submitButtonRef
+}) => {
+    const primaryTextGradient = 'bg-gradient-to-r from-[#003A70] to-blue-900'; // KIBRAN_COLOR to dark blue
+    const darkTextGradient = 'bg-gradient-to-r from-blue-400 to-[#1A6AA5]'; // Light blue to KIBRAN_COLOR_LIGHT
+    const buttonGradient = 'from-[#003A70] to-blue-800'; // KIBRAN_COLOR to dark blue
+    const buttonHover = 'hover:from-[#1A6AA5] hover:to-[#003A70]'; // KIBRAN_COLOR_LIGHT to KIBRAN_COLOR
 
-const HeaderIcons: React.FC<HeaderIconsProps> = ({ isDarkMode, toggleTheme }) => {
-    
-    // Base button styles for all header icons
-    const iconButtonClass = clsx(`p-3 rounded-full shadow-lg transition-all duration-500 z-50
-        hover:scale-105 active:scale-95`,
-        isDarkMode
-            ? 'bg-slate-700 text-blue-400 hover:bg-slate-600'
-            : 'bg-white text-blue-700 hover:bg-slate-200'
+return (
+        <div className={clsx(`w-full lg:w-6/12 p-6 sm:p-12 md:p-16 lg:p-20 flex flex-col justify-center min-h-screen relative 
+            transition-colors duration-700 overflow-hidden animate-slideInRight bg-transparent`)}
+        >
+            <div className={clsx("relative z-10 max-w-md mx-auto w-full p-0 sm:p-0 rounded-2xl transition-all duration-700",
+                                isDarkMode ? 'text-slate-100' : 'text-slate-900')}>
+                
+                <div className="transition-colors duration-700"> 
+                    
+                    <h1 className={clsx(`text-4xl sm:text-5xl font-extrabold mb-2 transition-colors duration-500 
+                        bg-clip-text text-transparent`, isDarkMode ? darkTextGradient : primaryTextGradient)}
+                        style={{ // Custom gradient for light mode
+                            backgroundImage: isDarkMode ? undefined : `linear-gradient(to right, ${KIBRAN_COLOR}, ${KIBRAN_COLOR_HOVER})` 
+                        }}
+                    >
+                        Change Password
+                    </h1>
+                    <p className="mb-10 text-lg text-slate-600 dark:text-slate-400 transition-colors duration-500">
+                        Verify your account and update your password securely.
+                    </p>
+
+                    <form onSubmit={handleSubmit} noValidate>
+                        {/* NEW: Email Address Field */}
+                        <FormInput 
+                            name="email" type="email" label="Email Address" icon={Icons.MailIcon} isRequired={true} 
+                            error={formErrors.email} isDarkMode={isDarkMode}
+                            value={formData.email}
+                            onChange={handleChange}
+                            onBlur={handleBlur}
+                            ref={emailRef}
+                            onKeyDown={(e) => handleKeyDown(e, currentPasswordRef)}
+                        />
+
+                        <FormInput 
+                            name="currentPassword" type="password" label="Current Password" icon={Icons.LockIcon} isRequired={true} 
+                            error={formErrors.currentPassword} isDarkMode={isDarkMode}
+                            value={formData.currentPassword}
+                            onChange={handleChange}
+                            onBlur={handleBlur}
+                            ref={currentPasswordRef}
+                            onKeyDown={(e) => handleKeyDown(e, newPasswordRef)}
+                        />
+                        <FormInput 
+                            name="newPassword" type="password" label="New Password" icon={Icons.LockIcon} isRequired={true} 
+                            error={formErrors.newPassword} isDarkMode={isDarkMode}
+                            value={formData.newPassword}
+                            onChange={handleChange}
+                            onBlur={handleBlur}
+                            ref={newPasswordRef}
+                            onKeyDown={(e) => handleKeyDown(e, confirmNewPasswordRef)}
+                        />
+                        <FormInput 
+                            name="confirmNewPassword" type="password" label="Confirm New Password" icon={Icons.LockIcon} isRequired={true} 
+                            error={formErrors.confirmNewPassword} isDarkMode={isDarkMode}
+                            value={formData.confirmNewPassword}
+                            onChange={handleChange}
+                            onBlur={handleBlur}
+                            ref={confirmNewPasswordRef}
+                            onKeyDown={(e) => handleKeyDown(e, submitButtonRef)}
+                        />
+
+                        {/* Submit Button */}
+                        <button 
+                            type="submit"
+                            ref={submitButtonRef}
+                            className={`w-full py-4 mt-4 rounded-xl font-bold text-lg shadow-2xl uppercase tracking-wider
+                                transition-all duration-300 transform hover:scale-[1.01] active:scale-[0.98]
+                                bg-gradient-to-r ${buttonGradient} text-white 
+                                ${buttonHover}
+                                focus:outline-none focus:ring-4 focus:ring-blue-500/60
+                            `}
+                            style={{ // Custom gradient for submit button
+                                backgroundImage: `linear-gradient(to right, ${KIBRAN_COLOR}, ${KIBRAN_COLOR_HOVER})`,
+                            }}
+                        >
+                            Update Password
+                        </button>
+                    </form>
+
+                    <p className="mt-8 text-center text-xs text-slate-600 dark:text-slate-400 transition-colors duration-500">
+                        <a href='../Dashboard' className={clsx(`font-semibold transition-colors duration-300 hover:underline`,
+                            isDarkMode ? 'text-blue-400 hover:text-blue-300' : 'text-blue-700 hover:text-blue-800')}
+                            style={!isDarkMode ? { color: KIBRAN_COLOR } : {}}
+                            >
+                            Back to Dashboard
+                        </a>
+                    </p>
+                </div>
+            </div>
+        </div>
     );
-    const iconColorStyle = { color: isDarkMode ? KIBRAN_COLOR_LIGHT : KIBRAN_COLOR };
+};
 
-    // Function to handle icon click (placeholder for actual functionality)
-    const handleIconClick = (name: string) => {
-        alert(`You clicked the ${name} icon! (Functionality not yet implemented)`);
+// --- Main Application Component (Container) ---
+const ChangePasswordPage = () => { 
+    const [isDarkMode, setIsDarkMode] = useState(false);
+    const [formData, setFormData] = useState({
+        email: '', currentPassword: '', newPassword: '', confirmNewPassword: '',
+    });
+    const [formErrors, setFormErrors] = useState({});
+    const [message, setMessage] = useState({ text: '', type: '' });
+
+    // Refs for focus management
+    const emailRef = useRef(null); // NEW REF
+    const currentPasswordRef = useRef(null);
+    const newPasswordRef = useRef(null);
+    const confirmNewPasswordRef = useRef(null);
+    const submitButtonRef = useRef(null);
+
+    const toggleTheme = () => setIsDarkMode(prev => !prev);
+    
+    useEffect(() => {
+        if (message.text) {
+            const timer = setTimeout(() => {
+                setMessage({ text: '', type: '' });
+            }, 5000);
+            return () => clearTimeout(timer);
+        }
+    }, [message.text]);
+
+    const handleChange = useCallback((e) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({ ...prev, [name]: value }));
+    }, []); 
+
+    const handleBlur = useCallback((e) => {
+        const { name, value } = e.target;
+        
+        // Clear error for the current field as the user leaves it
+        setFormErrors(prev => ({ ...prev, [name]: '' }));
+        
+        // Validation logic for specific fields on blur
+        if (name === 'email') { // ADDED EMAIL VALIDATION ON BLUR
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (value.length > 0 && !emailRegex.test(value)) {
+                setFormErrors(prev => ({ ...prev, email: 'Please enter a valid email address.' }));
+            }
+        } else if (name === 'confirmNewPassword') {
+            if (value.length > 0 && formData.newPassword !== value) {
+                setFormErrors(prev => ({ ...prev, confirmNewPassword: 'New passwords do not match.' }));
+            }
+        } else if (name === 'newPassword') {
+            if (value.length > 0) {
+                // Prevent new password from being the same as the current one
+                if (value === formData.currentPassword && formData.currentPassword.length > 0) {
+                     setFormErrors(prev => ({ ...prev, newPassword: 'New password cannot be the same as the current password.' }));
+                     return;
+                }
+
+                // Re-evaluate password validation criteria
+                const criteriaMet = Object.values(checkPasswordCriteria(value)).every(v => v);
+                if (!criteriaMet) {
+                    setFormErrors(prev => ({ ...prev, newPassword: 'Password must meet all security criteria.' }));
+                }
+            }
+        }
+    }, [formData.currentPassword, formData.newPassword]); 
+
+    
+    const handleKeyDown = useCallback((e, nextRef) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            if (nextRef && nextRef.current) {
+                nextRef.current.focus();
+            } else if (submitButtonRef.current) {
+                submitButtonRef.current.focus();
+            }
+        }
+    }, []); 
+
+    // Modularized Validation Logic
+    const validate = useCallback(() => {
+        let errors = {};
+        let isValid = true;
+
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        
+        // NEW: Email Validation
+        if (!formData.email) {
+            errors.email = 'Email address is required.'; 
+            isValid = false;
+        } else if (!emailRegex.test(formData.email)) {
+            errors.email = 'Please enter a valid email address.'; 
+            isValid = false;
+        }
+
+
+        // Current Password Validation (Basic presence check for this client-side mockup)
+        if (!formData.currentPassword) {
+            errors.currentPassword = 'Current Password is required.'; isValid = false;
+        }
+
+        // New Password Validation
+        if (!formData.newPassword) {
+            errors.newPassword = 'New Password is required.'; isValid = false;
+        } else {
+            // Check for security criteria
+            const criteriaMet = Object.values(checkPasswordCriteria(formData.newPassword)).every(v => v);
+            if (!criteriaMet) {
+                errors.newPassword = 'Password must meet all security criteria (Min 8 Chars, Uppercase, Lowercase, Number, Special Char).'; 
+                isValid = false;
+            }
+            // Prevent same password
+            if (formData.newPassword === formData.currentPassword) {
+                errors.newPassword = 'New password cannot be the same as the current password.';
+                isValid = false;
+            }
+        }
+        
+        // Confirm New Password Validation
+        if (!formData.confirmNewPassword) {
+            errors.confirmNewPassword = 'Confirmation is required.'; isValid = false;
+        } else if (formData.newPassword !== formData.confirmNewPassword) {
+            errors.confirmNewPassword = 'New passwords do not match.'; isValid = false;
+        }
+
+        setFormErrors(errors);
+        return isValid;
+    }, [formData]);
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        setMessage({ text: '', type: '' }); 
+        
+        if (validate()) {
+            console.log('Kibran Change Password Validated:', { 
+                email: formData.email,
+                newPassword: formData.newPassword, 
+            });
+            setMessage({ text: 'Password updated successfully! You can now log in with your new credentials.', type: 'success' }); 
+
+            // Simulate form reset
+            setFormData({
+                email: '', currentPassword: '', newPassword: '', confirmNewPassword: ''
+            });
+            setFormErrors({});
+            if(emailRef.current) { emailRef.current.focus(); } // Focus on email after success
+        } else {
+            setMessage({ text: 'Please review and correct the errors in the form.', type: 'error' });
+        }
     };
-
+    
     return (
-        <div className="fixed top-4 right-4 flex space-x-3 z-50">
-            {/* 1. Settings Icon */}
-            <button
-                onClick={() => handleIconClick('Settings')}
-                className={iconButtonClass}
-                style={iconColorStyle}
-                aria-label="Settings"
-            >
-                <Icons.SettingsIcon className="w-6 h-6"/>
-            </button>
-
-            {/* 2. Message Icon (with simulated badge) */}
-            <button
-                onClick={() => handleIconClick('Messages')}
-                className={iconButtonClass}
-                style={iconColorStyle}
-                aria-label="Messages"
-            >
-                <div className="relative">
-                    <Icons.MessageSquareIcon className="w-6 h-6"/>
-                    {/* Badge for unread messages */}
-                    <span className="absolute -top-1 -right-1 block h-3 w-3 rounded-full ring-2 ring-white" style={{ backgroundColor: '#FF6347' }}></span>
-                </div>
-            </button>
-
-            {/* 3. Alert/Notification Icon (with simulated badge) */}
-            <button
-                onClick={() => handleIconClick('Alerts')}
-                className={iconButtonClass}
-                style={iconColorStyle}
-                aria-label="Alerts"
-            >
-                <div className="relative">
-                    <Icons.BellIcon className="w-6 h-6"/>
-                    {/* Badge for unread notifications */}
-                    <span className="absolute -top-1 -right-1 block h-3 w-3 rounded-full ring-2 ring-white" style={{ backgroundColor: '#FFD700' }}></span>
-                </div>
-            </button>
-
-            {/* 4. Theme Toggle Icon (Existing functionality, moved into the fixed container) */}
+        <div className={clsx("min-h-screen flex flex-col lg:flex-row font-[Poppins,sans-serif] transition-colors duration-700 relative z-0",
+            isDarkMode ? 'bg-slate-900' : 'bg-white')}
+            style={{ 
+                backgroundImage: `url(${isDarkMode ? DARK_MODE_BACKGROUND_IMAGE : LIGHT_MODE_BACKGROUND_IMAGE})`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                backgroundRepeat: 'no-repeat',
+                backgroundBlendMode: 'multiply', 
+                backgroundColor: isDarkMode ? DARK_OVERLAY : LIGHT_OVERLAY 
+            }}
+        > 
+            <div className="absolute inset-0 z-10"></div> 
+            
             <button
                 onClick={toggleTheme}
-                className={iconButtonClass}
-                style={iconColorStyle}
-                aria-label="Toggle dark and light mode"
-            >
-                {isDarkMode ? <Icons.SunIcon className="w-6 h-6"/> : <Icons.MoonIcon className="w-6 h-6"/>}
-            </button>
-        </div>
-    );
-};
-
-
-// ----------------------------------------------------------------------
-// --- MAIN DASHBOARD LAYOUT COMPONENT ---
-// ----------------------------------------------------------------------
-
-const DashboardPage = () => {
-    const [isDarkMode, setIsDarkMode] = useState(false);
-    const [activeView, setActiveView] = useState('PurchaseContent'); 
-    const [isSidebarVisible, setIsSidebarVisible] = useState(true); 
-    const [userName] = useState('MASOOD AHMAD'); 
-    const [userRole] = useState('Online'); 
-    
-    const toggleTheme = () => setIsDarkMode(prev => !prev);
-    const toggleSidebar = () => setIsSidebarVisible(prev => !prev);
-    
-    // Logic to hide sidebar when main content area is clicked
-    const handleMainContentClick = () => {
-        // Only hide the sidebar on mobile views (e.g., screen width < 768px in Tailwind)
-        if (isSidebarVisible && window.innerWidth < 768) {
-            setIsSidebarVisible(false);
-        }
-    };
-
-    // Effect to set initial dark mode based on system preference
-    useEffect(() => {
-        if (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-            setIsDarkMode(true);
-        }
-    }, []);
-
-    const pageClasses = clsx(
-        "min-h-screen font-[Poppins,sans-serif] transition-colors duration-700 relative z-0 flex",
-        isDarkMode ? 'text-white' : 'text-slate-800' 
-    );
-
-    const renderContent = useCallback(() => {
-        switch (activeView) {
-            case 'DashboardContent':
-                return <DashboardContent isDarkMode={isDarkMode} />;
-            case 'InvoiceContent':
-                return <ContentPlaceholder title="Invoice Management" isDarkMode={isDarkMode}>Create and view customer sales invoices.</ContentPlaceholder>; 
-            case 'CustomerContent':
-                return <ContentPlaceholder title="Customer Management" isDarkMode={isDarkMode}>Manage customer profiles and contact information.</ContentPlaceholder>; 
-            case 'ManufacturerContent':
-                return <ContentPlaceholder title="Manufacturer/Supplier Management" isDarkMode={isDarkMode}>Manage manufacturer details, agreements, and payments.</ContentPlaceholder>; 
-            case 'MedicineContent':
-                return <ContentPlaceholder title="Medicine Inventory" isDarkMode={isDarkMode}>Manage product details, pricing, and classifications.</ContentPlaceholder>;
-            case 'PurchaseContent':
-                return <ContentPlaceholder title="Purchase Order Management" isDarkMode={isDarkMode}>Create, track, and receive new inventory orders.</ContentPlaceholder>;
-            case 'StockContent':
-                return <ContentPlaceholder title="Warehouse & Stock Control" isDarkMode={isDarkMode}>Monitor real-time stock levels, locations, and conduct cycle counts.</ContentPlaceholder>;
-            case 'ReturnContent':
-                return <ContentPlaceholder title="Returns & Exchanges" isDarkMode={isDarkMode}>Process customer or supplier returns and manage credit notes.</ContentPlaceholder>; 
-            case 'ReportingContent':
-                return <ContentPlaceholder title="Financial & Operational Reporting" isDarkMode={isDarkMode}>Generate sales reports, profit & loss, and inventory turnover analysis.</ContentPlaceholder>;
-            case 'AccountContent':
-                return <ContentPlaceholder title="Accounting & Ledger" isDarkMode={isDarkMode}>Manage general ledger, chart of accounts, and financial transactions.</ContentPlaceholder>; 
-            case 'BankContent':
-                return <ContentPlaceholder title="Bank & Cash Management" isDarkMode={isDarkMode}>Manage bank accounts, reconciliation, and cash flow.</ContentPlaceholder>; 
-            case 'TaskContent':
-                return <ContentPlaceholder title="Task Management" isDarkMode={isDarkMode}>Manage internal tasks, reminders, and staff assignments.</ContentPlaceholder>; 
-            default:
-                return <DashboardContent isDarkMode={isDarkMode} />;
-        }
-    }, [activeView, isDarkMode]);
-
-    return (
-        <div className={pageClasses}>
-            
-            {/* --- Fixed Background Image (The main "perspective" background) --- */}
-            <div className={clsx("fixed inset-0 z-[-2] transition-all duration-700",
-                isDarkMode ? 'bg-slate-900' : 'bg-gray-50'
-            )}
-                style={{
-                    backgroundImage: `url(${isDarkMode ? DARK_MODE_BACKGROUND_IMAGE : LIGHT_MODE_BACKGROUND_IMAGE})`,
-                    backgroundSize: 'cover',
-                    backgroundPosition: 'center',
-                    backgroundRepeat: 'no-repeat',
-                    backgroundBlendMode: 'multiply',
-                    backgroundColor: isDarkMode ? DARK_OVERLAY : LIGHT_OVERLAY 
-                }}
-            ></div>
-            
-            {/* --- Sidebar Toggle Button (Always visible on top-left) --- */}
-            <button
-                onClick={(e) => { e.stopPropagation(); toggleSidebar(); }}
-                className={clsx(`fixed top-4 left-4 p-3 rounded-full shadow-lg transition-all duration-500 z-50
+                className={clsx(`fixed top-4 right-4 p-3 rounded-full shadow-lg transition-all duration-500 z-50
                     hover:scale-105 active:scale-95`,
-                    // Moves button out of the way when the sidebar is open
-                    isSidebarVisible ? 'translate-x-64' : 'translate-x-0', 
                     isDarkMode
                         ? 'bg-slate-700 text-blue-400 hover:bg-slate-600'
                         : 'bg-white text-blue-700 hover:bg-slate-200'
                 )}
-                style={{ color: KIBRAN_COLOR }}
-                aria-label="Toggle sidebar"
+                style={{ color: isDarkMode ? KIBRAN_COLOR_LIGHT : KIBRAN_COLOR }}
+                aria-label="Toggle dark and light mode"
             >
-                <Icons.MenuIcon className="w-6 h-6"/>
+                {isDarkMode ? <Icons.SunIcon className="w-6 h-6"/> : <Icons.MoonIcon className="w-6 h-6"/>}
             </button>
-
-
-            {/* --- NEW: Header Icons (Settings, Message, Alert, Theme Toggle) --- */}
-            <HeaderIcons 
-                isDarkMode={isDarkMode}
-                toggleTheme={toggleTheme}
-            />
             
-            {/* --- Sidebar (Navigation) --- */}
-            <DashboardSidebar 
-                activeItem={activeView}
-                setActiveItem={setActiveView}
-                isDarkMode={isDarkMode}
-                userName={userName}
-                userRole={userRole}
-                isVisible={isSidebarVisible} 
-            />
+            <div className="flex flex-col lg:flex-row w-full relative z-20">
+                <PharmacyHero isDarkMode={isDarkMode} />
+                
+                <FormSection 
+                    isDarkMode={isDarkMode}
+                    formData={formData}
+                    formErrors={formErrors}
+                    handleChange={handleChange}
+                    handleBlur={handleBlur}
+                    handleKeyDown={handleKeyDown}
+                    handleSubmit={handleSubmit}
+                    emailRef={emailRef} 
+                    currentPasswordRef={currentPasswordRef}
+                    newPasswordRef={newPasswordRef}
+                    confirmNewPasswordRef={confirmNewPasswordRef}
+                    submitButtonRef={submitButtonRef}
+                />
+            </div>
 
-            {/* --- Main Content Area --- */}
-            <main 
-                className={clsx(
-                    "flex-grow p-4 sm:p-8 relative z-10 min-h-screen overflow-y-auto transition-all duration-500",
-                    // FIX: Ensure 'md:ml-64' is present for large screens when the sidebar is visible, otherwise use 'ml-0'
-                    isSidebarVisible ? 'md:ml-64 ml-0' : 'ml-0'
-                )}
-                onClick={handleMainContentClick} // Hide sidebar on click
-            > 
-                {renderContent()}
-            </main>
+            <CustomAlert message={message.text} type={message.type} onClose={() => setMessage({ text: '', type: '' })} />
         </div>
     );
 };
 
-export default DashboardPage;
+export default ChangePasswordPage;
